@@ -1,0 +1,27 @@
+services:
+  webstream-mcp:
+    build: .
+    container_name: webstream-mcp-server
+    ports:
+      - "8000:8000"  # Web server port for SSE streaming
+    stdin_open: true  # Keep stdin open (equivalent to -i)
+    tty: true         # Allocate a pseudo-TTY (equivalent to -t)
+    restart: unless-stopped  # Restart policy
+    environment:
+      - PYTHONUNBUFFERED=1
+    # volumes:
+    #   # Optional: Mount the Python file for development
+    #   - ./webstream_server.py:/app/webstream_server.py
+    networks:
+      - webstream-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8000)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  webstream-network:
+    driver: bridge
+
