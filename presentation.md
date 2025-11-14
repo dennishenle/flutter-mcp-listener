@@ -4,8 +4,12 @@ theme: default
 paginate: true
 backgroundColor: #222222
 color: #ffffff
-header: 'MCP - Model Context Protocol'
-footer: 'Dennis Henle - Domain Days - Bar Camp'
+header: 'Controlling Flutter Applications with LLMs via MCP'
+footer: 'Dennis Henle - Flutter Meetup'
+---
+
+# Controlling Flutter Applications with LLMs via MCP
+
 ---
 
 # MCP - Model Context Protocol
@@ -104,41 +108,26 @@ The state of the art until MCP came out was
     - Ad-hoc authentication methods
     - No standardized security practices
 
+---
+
+# I tried it out
+
+With an MCP that can talk to my flutter app
+
+---
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   AI Model      │    │   MCP Server    │    │  Data Sources   │
+│                 │    │                 │    │                 │
+│                 │    │   Publishes a   │    │  • Databases    │
+│   Cursor        │◄──►│   Webstream     │◄──►│  • APIs         │
+│                 │    │   when called   │    │  • Files        │
+│                 │    │   by Cursor     │    │  • Services     │
+│                 │    │                 │    │  • Tools        │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
 --- 
 
-### It's easy to implement
-
-[Build an mcp server](https://modelcontextprotocol.io/docs/develop/build-server)
-
----
-
-# Why it is dangerous
-
-[Docker: Sicherheitsalptraum MCP – sechs Lücken identifiziert](https://www.heise.de/news/Sicherheitsalptraum-MCP-Schaedlicher-Code-und-Datenverlust-10510262.html)
-
-[Die Sicherheitsprobleme des Model Context Protocols](https://www.heise.de/ratgeber/Die-Sicherheitsprobleme-des-Model-Context-Protocols-10454915.html)
-
-[Angriff über GitHub MCP Server: Zugriff auf private Daten](https://www.heise.de/news/Angriff-ueber-GitHub-MCP-Server-Zugriff-auf-private-Daten-10399081.html)
-
----
-
-## It's a BARN DOOR for malicious context injections
-    
-- The Model's context is shared among the mpc tools. 
-- LLMs are still not perfect in recognizing attacks. 
-- Not so nice mcp servers could inject malicous context. 
-
----
-
-## It's an attack surface extension!
-
-- MCP servers become high-value targets for attackers
-- Single point of failure for multiple AI systems
-- Complex protocol creates new vulnerability vectors
-- Potential for privilege escalation attacks
-
----
-
 # Thank you 
-
----
