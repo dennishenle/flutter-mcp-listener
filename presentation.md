@@ -158,7 +158,7 @@ With an MCP that can talk to my flutter app
 
 ```bash
 cd webstram-mcp-server
-docker compose up
+docker compose up -d
 ```
 
 It should be available to watch in the browser now at
@@ -166,10 +166,20 @@ It should be available to watch in the browser now at
 
 ---
 
-## Call in MCP server
+## Start up the flutter app
 
+```bash
+flutter run
 ```
 
+Make sure everything is connected properly. 
+It should say connected/registered in green. 
+
+---
+## Call in Cursor
+
+```
+Push "Hello from cursor" to the webhooks
 ```
 
 ---

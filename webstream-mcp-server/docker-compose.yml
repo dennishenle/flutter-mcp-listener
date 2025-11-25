@@ -3,10 +3,10 @@ services:
     build: .
     container_name: webstream-mcp-server
     ports:
-      - "8000:8000"  # Web server port for SSE streaming
-    stdin_open: true  # Keep stdin open (equivalent to -i)
-    tty: true         # Allocate a pseudo-TTY (equivalent to -t)
-    restart: unless-stopped  # Restart policy
+      - "8000:8000" # Web server port for SSE streaming
+    stdin_open: true # Keep stdin open (equivalent to -i)
+    tty: true # Allocate a pseudo-TTY (equivalent to -t)
+    restart: unless-stopped # Restart policy
     environment:
       - PYTHONUNBUFFERED=1
     # volumes:
@@ -15,13 +15,12 @@ services:
     networks:
       - webstream-network
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8000)); s.close()"]
+      test: [ "CMD", "pgrep", "tail" ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 5s
 
 networks:
   webstream-network:
     driver: bridge
-
