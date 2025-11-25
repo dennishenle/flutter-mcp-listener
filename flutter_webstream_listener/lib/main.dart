@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shelf/shelf.dart' as shelf;
+import 'package:shelf/shelf_io.dart' as shelf_io;
 
 void main() {
   runApp(const MyApp());
@@ -14,136 +17,193 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'WebStream Listener',
+      title: 'Webhook Listener',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const WebStreamListenerPage(),
+      home: const WebhookListenerPage(),
     );
   }
 }
 
-class WebStreamListenerPage extends StatefulWidget {
-  const WebStreamListenerPage({super.key});
+class WebhookListenerPage extends StatefulWidget {
+  const WebhookListenerPage({super.key});
 
   @override
-  State<WebStreamListenerPage> createState() => _WebStreamListenerPageState();
+  State<WebhookListenerPage> createState() => _WebhookListenerPageState();
 }
 
-class _WebStreamListenerPageState extends State<WebStreamListenerPage> {
+class _WebhookListenerPageState extends State<WebhookListenerPage> {
   final List<String> _messages = [];
-  String _connectionStatus = 'Disconnected';
-  StreamSubscription? _streamSubscription;
+  String _connectionStatus = 'Starting...';
   int _eventCount = 0;
+  HttpServer? _server;
 
+  // Local HTTP server configuration
+  final int _localPort = 3000;
+
+  // MCP server configuration
   // For web/desktop: use localhost
   // For iOS simulator: use localhost (works on iOS simulator)
   // For Android emulator: use 10.0.2.2
   // For physical device: use your computer's IP address (e.g., '192.168.1.100')
-  final String _streamUrl = 'http://localhost:8000/stream';
+  final String _mcpServerUrl = 'http://192.168.0.47:8000';
+
+  String get _webhookUrl {
+    // For the webhook registration, we need to use a URL that the MCP server can reach
+    // On macOS/iOS simulator: use 'localhost'
+    // On Android emulator: the host machine is accessible at 10.0.2.2
+    // For physical devices: use your computer's actual IP address
+    if (Platform.isAndroid) {
+      // When running on Android emulator, localhost on the emulator means the emulator itself
+      // The host machine is at 10.0.2.2
+      return 'http://10.0.2.2:$_localPort/webhook';
+    } else {
+      // For iOS simulator and desktop, localhost works
+      return 'http://192.168.0.47:$_localPort/webhook';
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _connectToStream();
+    _startWebhookServer();
   }
 
   @override
   void dispose() {
-    _streamSubscription?.cancel();
+    _stopServer();
     super.dispose();
   }
 
-  Future<void> _connectToStream() async {
+  Future<void> _startWebhookServer() async {
     setState(() {
-      _connectionStatus = 'Connecting...';
-      _eventCount = 0;
+      _connectionStatus = 'Starting server...';
     });
 
     try {
-      final client = http.Client();
-      final request = http.Request('GET', Uri.parse(_streamUrl));
+      // Create a Shelf handler for webhook requests
+      final handler = const shelf.Pipeline()
+          .addMiddleware(shelf.logRequests())
+          .addHandler(_handleWebhookRequest);
 
-      // Set SSE headers
-      request.headers['Accept'] = 'text/event-stream';
-      request.headers['Cache-Control'] = 'no-cache';
+      // Start the HTTP server
+      _server = await shelf_io.serve(
+        handler,
+        InternetAddress.anyIPv4,
+        _localPort,
+      );
 
-      final response = await client.send(request);
+      setState(() {
+        _connectionStatus = 'Server running on :$_localPort';
+      });
 
-      if (response.statusCode == 200) {
-        setState(() {
-          _connectionStatus = 'Connected ✓';
-        });
+      debugPrint('Webhook server started on port $_localPort');
 
-        String buffer = '';
-
-        _streamSubscription = response.stream
-            .transform(utf8.decoder)
-            .listen(
-              (String chunk) {
-                buffer += chunk;
-
-                // Process complete lines
-                final lines = buffer.split('\n');
-                buffer = lines.last; // Keep incomplete line in buffer
-
-                for (int i = 0; i < lines.length - 1; i++) {
-                  final line = lines[i].trim();
-
-                  // Parse SSE format: "data: message content"
-                  if (line.startsWith('data:')) {
-                    final message = line.substring(5).trim();
-                    if (message.isNotEmpty) {
-                      setState(() {
-                        _eventCount++;
-                        _messages.insert(
-                          0,
-                          message,
-                        ); // Add to top for newest first
-                      });
-                    }
-                  }
-                  // Ignore keepalive comments (lines starting with ':')
-                  // and empty lines
-                }
-              },
-              onError: (error) {
-                setState(() {
-                  _connectionStatus = 'Error: $error';
-                });
-                // Auto-reconnect after error
-                Future.delayed(const Duration(seconds: 3), _connectToStream);
-              },
-              onDone: () {
-                setState(() {
-                  _connectionStatus = 'Disconnected';
-                });
-                // Auto-reconnect on disconnect
-                Future.delayed(const Duration(seconds: 3), _connectToStream);
-              },
-            );
-      } else {
-        setState(() {
-          _connectionStatus = 'Error: HTTP ${response.statusCode}';
-        });
-      }
+      // Register webhook with MCP server
+      await _registerWebhook();
     } catch (e) {
       setState(() {
-        _connectionStatus = 'Error: $e';
+        _connectionStatus = 'Error starting server: $e';
       });
-      // Auto-reconnect on error
-      Future.delayed(const Duration(seconds: 5), _connectToStream);
+      debugPrint('Error starting webhook server: $e');
     }
   }
 
-  void _reconnect() {
-    _streamSubscription?.cancel();
+  Future<shelf.Response> _handleWebhookRequest(shelf.Request request) async {
+    // Only accept POST requests to /webhook
+    if (request.method != 'POST' || request.url.path != 'webhook') {
+      return shelf.Response.notFound('Not found');
+    }
+
+    try {
+      // Read the request body
+      final body = await request.readAsString();
+      final data = json.decode(body) as Map<String, dynamic>;
+
+      final message = data['message'] as String?;
+      final timestamp = data['timestamp'] as String?;
+
+      if (message != null) {
+        // Update UI with the received message
+        setState(() {
+          _eventCount++;
+          _messages.insert(0, '[$timestamp] $message');
+        });
+
+        debugPrint('Received webhook: $message');
+
+        return shelf.Response.ok(
+          json.encode({'status': 'success', 'received': message}),
+          headers: {'Content-Type': 'application/json'},
+        );
+      } else {
+        return shelf.Response.badRequest(
+          body: json.encode({'error': 'Message field is required'}),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error handling webhook: $e');
+      return shelf.Response.internalServerError(
+        body: json.encode({'error': e.toString()}),
+      );
+    }
+  }
+
+  Future<void> _registerWebhook() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_mcpServerUrl/api/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'webhook_url': _webhookUrl}),
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _connectionStatus = 'Registered ✓ (port $_localPort)';
+        });
+        debugPrint('Webhook registered successfully');
+      } else {
+        setState(() {
+          _connectionStatus = 'Registration failed: ${response.statusCode}';
+        });
+        debugPrint('Failed to register webhook: ${response.body}');
+      }
+    } catch (e) {
+      setState(() {
+        _connectionStatus = 'Registration error: $e';
+      });
+      debugPrint('Error registering webhook: $e');
+    }
+  }
+
+  Future<void> _unregisterWebhook() async {
+    try {
+      await http.post(
+        Uri.parse('$_mcpServerUrl/api/unregister'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'webhook_url': _webhookUrl}),
+      );
+      debugPrint('Webhook unregistered');
+    } catch (e) {
+      debugPrint('Error unregistering webhook: $e');
+    }
+  }
+
+  Future<void> _stopServer() async {
+    await _unregisterWebhook();
+    await _server?.close(force: true);
+    _server = null;
+  }
+
+  void _reconnect() async {
+    await _stopServer();
     setState(() {
       _messages.clear();
       _eventCount = 0;
     });
-    _connectToStream();
+    await _startWebhookServer();
   }
 
   void _clearMessages() {
@@ -157,7 +217,7 @@ class _WebStreamListenerPageState extends State<WebStreamListenerPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: const Text('WebStream Listener'),
+        title: const Text('Webhook Listener'),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep),
@@ -176,22 +236,25 @@ class _WebStreamListenerPageState extends State<WebStreamListenerPage> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
-            color: _connectionStatus == 'Connected'
+            color: _connectionStatus.contains('✓')
                 ? Colors.green.shade100
-                : _connectionStatus.startsWith('Error')
+                : _connectionStatus.startsWith('Error') ||
+                      _connectionStatus.contains('failed')
                 ? Colors.red.shade100
                 : Colors.orange.shade100,
             child: Row(
               children: [
                 Icon(
-                  _connectionStatus == 'Connected'
+                  _connectionStatus.contains('✓')
                       ? Icons.check_circle
-                      : _connectionStatus.startsWith('Error')
+                      : _connectionStatus.startsWith('Error') ||
+                            _connectionStatus.contains('failed')
                       ? Icons.error
                       : Icons.pending,
-                  color: _connectionStatus == 'Connected'
+                  color: _connectionStatus.contains('✓')
                       ? Colors.green
-                      : _connectionStatus.startsWith('Error')
+                      : _connectionStatus.startsWith('Error') ||
+                            _connectionStatus.contains('failed')
                       ? Colors.red
                       : Colors.orange,
                 ),
@@ -205,9 +268,10 @@ class _WebStreamListenerPageState extends State<WebStreamListenerPage> {
                         'Status: $_connectionStatus',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: _connectionStatus == 'Connected ✓'
+                          color: _connectionStatus.contains('✓')
                               ? Colors.green.shade900
-                              : _connectionStatus.startsWith('Error')
+                              : _connectionStatus.startsWith('Error') ||
+                                    _connectionStatus.contains('failed')
                               ? Colors.red.shade900
                               : Colors.orange.shade900,
                         ),
@@ -224,7 +288,7 @@ class _WebStreamListenerPageState extends State<WebStreamListenerPage> {
                   ),
                 ),
                 Text(
-                  _streamUrl.replaceAll('http://', ''),
+                  'Port $_localPort',
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                 ),
               ],
@@ -251,7 +315,7 @@ class _WebStreamListenerPageState extends State<WebStreamListenerPage> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Waiting for messages from the stream...',
+                          'Waiting for webhook messages...',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey.shade500,

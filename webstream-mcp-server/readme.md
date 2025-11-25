@@ -1,41 +1,49 @@
-# WebstreamMCP Server
+# WebhookMCP Server
 
-A Model Context Protocol (MCP) server that provides a web server with Server-Sent Events (SSE) streaming capability for pushing real-time messages to connected clients.
+A Model Context Protocol (MCP) server that provides webhook delivery capability for pushing messages to registered webhook endpoints.
 
 ## Purpose
 
-This MCP server provides an interface for AI assistants (Claude Desktop, Cursor) to push events to a web stream that other applications can listen to via Server-Sent Events (SSE).
+This MCP server provides an interface for AI assistants (Claude Desktop, Cursor) to push messages to registered webhook URLs via HTTP POST requests. This eliminates the need for persistent connections and allows receivers to operate independently.
 
 ## Features
 
 ### MCP Tool
 
-- **`push_stream`** - Push messages to all connected web clients via SSE
+- **`push_webhook`** - Push messages to all registered webhooks via HTTP POST
   - Parameters: `message` (required), `port` (optional, default 8000), `host` (optional, default 0.0.0.0)
   - Automatically starts web server if not running
-  - Maintains persistent connections with multiple clients
+  - Sends to multiple webhooks in parallel
   - Provides timestamped messages
-  - Returns status with active client count
+  - Returns status with successful delivery count
 
 ### Web Endpoints
 
-- **`GET /`** - Interactive HTML dashboard for viewing events in real-time
-- **`GET /stream`** - SSE endpoint for receiving events (EventSource compatible)
+- **`GET /`** - Interactive HTML dashboard for managing webhooks
+- **`POST /api/register`** - Register a webhook URL
+  - Request body: `{"webhook_url": "http://your-server/webhook"}`
+  - Returns: `{"status": "success", "webhook_url": "...", "total_webhooks": N}`
+- **`POST /api/unregister`** - Unregister a webhook URL
+  - Request body: `{"webhook_url": "http://your-server/webhook"}`
+  - Returns: `{"status": "success", "webhook_url": "...", "total_webhooks": N}`
+- **`GET /api/webhooks`** - List all registered webhooks
+  - Returns: `{"webhooks": [...], "total": N}`
 - **`POST /api/push`** - HTTP API for pushing messages programmatically
   - Request body: `{"message": "your message here"}`
-  - Returns: `{"status": "success", "message": "...", "timestamp": "...", "clients": N}`
+  - Returns: `{"status": "success", "message": "...", "timestamp": "...", "webhooks_notified": N, "total_webhooks": N}`
 
 ### Web Features
 
-- Persistent SSE connections with automatic keepalive (every 30 seconds)
-- Real-time dashboard with event counter and connection status
+- No persistent connections required
+- Webhook registration and management dashboard
+- Parallel webhook delivery for performance
 - CORS enabled for cross-origin requests
-- Handles multiple concurrent clients
+- Handles multiple registered webhooks
 
 ## Prerequisites
 
 - Docker and Docker Compose
-- A browser or application that supports EventSource/SSE (for receiving messages)
+- An HTTP server/application to receive webhook POST requests
 - Claude Desktop or Cursor (for pushing messages via MCP)
 
 ## Installation
@@ -63,10 +71,10 @@ For detailed setup instructions, see:
 
 Ask the AI assistant:
 
-- "Push the message 'Hello World' to the webstream"
-- "Send 'System update completed' to all stream listeners"
+- "Push the message 'Hello World' to the webhooks"
+- "Send 'System update completed' to all registered webhooks"
 - "Broadcast 'New event detected' on port 8080"
-- "Push 'Server started' to the webstream"
+- "Push 'Server started' to the webhooks"
 
 ### Via HTTP API
 
@@ -82,47 +90,62 @@ curl -X POST http://localhost:8000/api/push \
 python test-push.py
 ```
 
-### Testing the Stream
+### Testing Webhooks
 
 1. **Open the web dashboard**: Navigate to `http://localhost:8000` in your browser
-2. **Connect a listener**: Run the Node.js listener (see `/webstream-listener` folder)
-3. **Push messages**: Use Claude/Cursor or the HTTP API
-4. **Watch events appear** in real-time across all connected clients
+2. **Start a webhook receiver**: Run the Flutter app (see `/flutter_webstream_listener` folder)
+3. **Register your webhook**: The Flutter app auto-registers or use the dashboard
+4. **Push messages**: Use Claude/Cursor or the HTTP API
+5. **Watch messages arrive** at your webhook endpoint
 
-### Connecting from Code
+### Registering Webhooks from Code
+
+```bash
+# Register a webhook using curl
+curl -X POST http://localhost:8000/api/register \
+  -H "Content-Type: application/json" \
+  -d '{"webhook_url": "http://your-server:3000/webhook"}'
+
+# List registered webhooks
+curl http://localhost:8000/api/webhooks
+
+# Unregister a webhook
+curl -X POST http://localhost:8000/api/unregister \
+  -H "Content-Type: application/json" \
+  -d '{"webhook_url": "http://your-server:3000/webhook"}'
+```
 
 ```javascript
-// JavaScript/Node.js
-const EventSource = require('eventsource');
-const eventSource = new EventSource('http://localhost:8000/stream');
+// JavaScript/Node.js - Creating a webhook receiver
+const express = require('express');
+const app = express();
+app.use(express.json());
 
-eventSource.onopen = () => {
-    console.log('✅ Connected to webstream!');
-};
+app.post('/webhook', (req, res) => {
+    const { message, timestamp } = req.body;
+    console.log(`📨 Received: [${timestamp}] ${message}`);
+    res.json({ status: 'success' });
+});
 
-eventSource.onmessage = (event) => {
-    console.log('📨 Received:', event.data);
-};
-
-eventSource.onerror = (error) => {
-    console.error('❌ Connection error:', error);
-};
+app.listen(3000, () => console.log('Webhook receiver running on port 3000'));
 ```
 
 ```python
-# Python with sseclient-py
-import sseclient
-import requests
+# Python Flask webhook receiver
+from flask import Flask, request, jsonify
 
-response = requests.get('http://localhost:8000/stream', stream=True)
-client = sseclient.SSEClient(response)
-for event in client.events():
-    print(f'📨 Received: {event.data}')
-```
+app = Flask(__name__)
 
-```bash
-# Simple curl test (press Ctrl+C to stop)
-curl -N http://localhost:8000/stream
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.json
+    message = data.get('message')
+    timestamp = data.get('timestamp')
+    print(f'📨 Received: [{timestamp}] {message}')
+    return jsonify({'status': 'success'})
+
+if __name__ == '__main__':
+    app.run(port=3000)
 ```
 
 ## Architecture
@@ -134,25 +157,26 @@ curl -N http://localhost:8000/stream
                      │ MCP Protocol (stdio)
                      ↓
 ┌─────────────────────────────────────────────────────────┐
-│ Docker Container: webstream-mcp-server                  │
+│ Docker Container: webhook-mcp-server                    │
 │  ┌────────────────────────────────────────────────────┐ │
-│  │ WebstreamMCP Server (Python/FastMCP)              │ │
-│  │  - push_stream tool                                │ │
+│  │ WebhookMCP Server (Python/FastMCP)                │ │
+│  │  - push_webhook tool                               │ │
 │  └────────────────┬───────────────────────────────────┘ │
 │                   ↓                                      │
 │  ┌────────────────────────────────────────────────────┐ │
 │  │ Web Server (aiohttp) - Port 8000                   │ │
-│  │  - GET /           → Dashboard                     │ │
-│  │  - GET /stream     → SSE endpoint                  │ │
-│  │  - POST /api/push  → HTTP API                      │ │
+│  │  - GET  /              → Dashboard                 │ │
+│  │  - POST /api/register  → Register webhook          │ │
+│  │  - POST /api/push      → Push to webhooks          │ │
+│  │  - GET  /api/webhooks  → List webhooks             │ │
 │  └────────────────┬───────────────────────────────────┘ │
 └───────────────────┼─────────────────────────────────────┘
-                    │ Server-Sent Events (SSE)
+                    │ HTTP POST (Webhooks)
         ┌───────────┼───────────┐
         ↓           ↓           ↓
    ┌─────────┐ ┌─────────┐ ┌─────────┐
-   │ Browser │ │ Node.js │ │  Other  │
-   │Dashboard│ │Listener │ │ Clients │
+   │ Flutter │ │ Node.js │ │  Other  │
+   │   App   │ │ Server  │ │Receivers│
    └─────────┘ └─────────┘ └─────────┘
 ```
 
@@ -275,17 +299,18 @@ ports:
 - Or wait for the server to fully initialize (check logs)
 - The server auto-starts on container launch
 
-### No Clients Receiving Messages
+### No Webhooks Receiving Messages
 
-**Symptoms**: Messages are pushed but clients don't receive them
+**Symptoms**: Messages are pushed but webhooks don't receive them
 
 **Solutions**:
-- **Connect clients FIRST**, then push messages (SSE is push-only)
-- Verify client is connected to correct endpoint: `http://localhost:8000/stream`
-- Check browser console for connection errors (F12)
-- Test with curl: `curl -N http://localhost:8000/stream`
-- Verify messages are being sent: Check container logs for "Active clients: N"
-- If using Node.js, ensure you're using the `eventsource` package
+- **Register webhooks FIRST** via `/api/register`
+- Verify webhook is registered: `curl http://localhost:8000/api/webhooks`
+- Check webhook endpoint is accessible from the MCP server
+- For localhost receivers, ensure correct IP (10.0.2.2 for Android emulator)
+- Check container logs for webhook delivery errors
+- Verify webhook endpoint accepts POST requests and returns 200 status
+- Test webhook manually: `curl -X POST http://your-webhook/webhook -H "Content-Type: application/json" -d '{"message":"test","timestamp":"2025-01-01T00:00:00Z"}'`
 
 ### Container Exits Immediately
 
@@ -337,47 +362,48 @@ DEFAULT_HOST = "127.0.0.1"  # Instead of "0.0.0.0"
 ### Technology Stack
 
 - **MCP Framework**: FastMCP (Python MCP SDK)
-- **Web Framework**: aiohttp (async HTTP server)
-- **Protocol**: Server-Sent Events (SSE) / EventSource
+- **Web Framework**: aiohttp (async HTTP server and client)
+- **Protocol**: HTTP POST (Webhooks)
 - **Container**: Docker with Python 3.11-slim
 - **Transport**: stdio (for MCP communication)
 
 ### Architecture Details
 
 - **Threading Model**: Web server runs in a background thread with its own event loop
-- **Connection Management**: Set-based tracking of connected SSE clients
+- **Webhook Management**: Set-based tracking of registered webhook URLs
 - **Auto-start**: Web server initializes on container startup (port 8000)
-- **Graceful Handling**: Disconnected clients are automatically removed
-- **Keepalive**: SSE connections send keepalive every 30 seconds
-- **Message Format**: Timestamped messages in ISO 8601 format (UTC)
+- **Parallel Delivery**: Webhooks are called in parallel using asyncio.gather
+- **Timeout Handling**: 10-second timeout per webhook request
+- **Message Format**: JSON payload with timestamped messages in ISO 8601 format (UTC)
 
-### SSE Message Format
+### Webhook Payload Format
 
+```json
+{
+  "message": "Your message here",
+  "timestamp": "2025-11-11T12:34:56.789012+00:00"
+}
 ```
-data: [2025-11-11T12:34:56.789012+00:00] Your message here\n\n
-```
 
-Each message includes:
-- `data:` prefix (SSE protocol)
-- ISO 8601 timestamp with timezone
-- The actual message content
-- Double newline delimiter
+Each webhook receives:
+- `message`: The actual message content
+- `timestamp`: ISO 8601 timestamp with timezone (UTC)
 
-### Connection Lifecycle
+### Webhook Lifecycle
 
-1. Client connects to `/stream`
-2. Server sends initial connection message
-3. Server adds client to active set
-4. Messages are broadcasted to all clients in set
-5. Keepalive sent every 30 seconds (`: keepalive\n\n`)
-6. On disconnect, client is removed from set
+1. Receiver registers webhook URL via `/api/register`
+2. Server stores webhook URL in registered set
+3. When a message is pushed, server makes HTTP POST to all webhooks
+4. Each webhook endpoint responds with success/failure
+5. Failed webhooks are logged but kept in registry
+6. Receiver can unregister via `/api/unregister`
 
 ### Performance Characteristics
 
-- **Concurrent Clients**: Supports multiple simultaneous connections (limited by system resources)
-- **Message Latency**: Near real-time (typically <100ms)
-- **Memory Usage**: Minimal per-client overhead
-- **CPU Usage**: Low (event-driven architecture)
+- **Concurrent Webhooks**: Supports multiple webhooks with parallel delivery
+- **Message Latency**: Depends on webhook endpoint response time (10s timeout)
+- **Memory Usage**: Minimal - only stores webhook URLs
+- **CPU Usage**: Low (event-driven architecture with parallel requests)
 
 ## Project Files
 
@@ -394,8 +420,8 @@ Each message includes:
 
 ## Related Projects
 
-- **webstream-listener** (Node.js) - Example SSE client for receiving messages
-- **flutter_webstream_listener** - Flutter/Dart mobile app example
+- **flutter_webstream_listener** - Flutter/Dart mobile app with webhook receiver
+- Other webhook-compatible servers and applications
 
 ## License
 

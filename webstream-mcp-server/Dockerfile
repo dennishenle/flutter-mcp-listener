@@ -26,5 +26,6 @@ USER mcpuser
 # Expose port for web server (if needed for documentation)
 EXPOSE 8000
 
-# Run the server (will keep alive with stdin_open in docker-compose)
-CMD ["python", "webstream_server.py"]
+# Keep container alive without starting the server
+# Cursor will start the server via docker exec
+CMD ["tail", "-f", "/dev/null"]

@@ -1,32 +1,36 @@
-# Flutter WebStream Listener
+# Flutter Webhook Listener
 
-A beautiful Flutter app for listening to the WebstreamMCP Server-Sent Events (SSE) stream in real-time.
+A beautiful Flutter app that receives webhook messages from the WebhookMCP Server via HTTP POST requests. No persistent connections required!
 
-## ✅ Fixed Issues
+## 🔄 What Changed?
 
-The app now correctly:
-- ✅ Connects to the `/stream` endpoint (was missing before)
-- ✅ Parses SSE format with `data:` prefix
-- ✅ Auto-reconnects on disconnect or error
-- ✅ Shows event count and connection status
-- ✅ Displays messages newest-first
-- ✅ Handles keepalive pings properly
+This app has been **converted from SSE (Server-Sent Events) to Webhooks**:
+
+- ❌ **Before**: Persistent connection to server stream
+- ✅ **Now**: Runs local HTTP server and receives webhook POST requests
+- ✅ **Benefit**: No connection management, simpler architecture, works better on mobile
 
 ## 🚀 Quick Start
 
-### 1. Ensure WebStream Server is Running
+### 1. Ensure Webhook MCP Server is Running
 
 ```bash
-cd /Users/dennis/projects/MCP/webstream-mcp-server
+cd /Users/dennis/projects/flutter-meetup-041225/webstream-mcp-server
 docker-compose up -d
 ```
 
 ### 2. Run the Flutter App
 
 ```bash
-cd /Users/dennis/projects/MCP/flutter_webstream_listener
+cd /Users/dennis/projects/flutter-meetup-041225/flutter_webstream_listener
+flutter pub get
 flutter run
 ```
+
+The app will:
+- Start an HTTP server on port 3000
+- Automatically register its webhook with the MCP server
+- Show "Registered ✓" when ready
 
 ### 3. Send Test Messages
 
@@ -35,12 +39,12 @@ Push messages to see them appear in the app:
 ```bash
 curl -X POST http://localhost:8000/api/push \
   -H "Content-Type: application/json" \
-  -d '{"message":"Hello from Flutter!"}'
+  -d '{"message":"Hello from webhooks!"}'
 ```
 
 Or use Claude/Cursor:
 ```
-"Push 'Testing Flutter app!' to the webstream"
+"Push 'Testing Flutter webhook app!' to the webhooks"
 ```
 
 ## 📱 Platform-Specific Configuration
@@ -48,11 +52,7 @@ Or use Claude/Cursor:
 ### Web & Desktop (macOS, Windows, Linux)
 ✅ **Works with default settings**
 
-The app uses `http://localhost:8000/stream` which works perfectly on:
-- Chrome, Safari, Firefox (Flutter Web)
-- macOS app
-- Windows app
-- Linux app
+The app automatically uses the correct configuration for desktop platforms.
 
 ### iOS Simulator
 ✅ **Works with default settings**
@@ -60,17 +60,9 @@ The app uses `http://localhost:8000/stream` which works perfectly on:
 iOS Simulator can access `localhost` from your Mac.
 
 ### Android Emulator
-⚠️ **Needs IP address change**
+✅ **Automatically configured**
 
-Android emulator uses a special IP for the host machine. Change line 44 in `main.dart`:
-
-```dart
-// Change from:
-final String _streamUrl = 'http://localhost:8000/stream';
-
-// To:
-final String _streamUrl = 'http://10.0.2.2:8000/stream';
-```
+The app automatically detects Android platform and uses `10.0.2.2` for the MCP server URL and webhook registration.
 
 ### Physical Devices (iPhone, Android Phone)
 ⚠️ **Needs your computer's IP address**
@@ -87,43 +79,62 @@ ifconfig | grep "inet " | grep -v 127.0.0.1
 ipconfig
 ```
 
-Then update line 44 in `main.dart`:
+Then update `main.dart` around line 50:
 
 ```dart
-// Replace with your computer's IP:
-final String _streamUrl = 'http://192.168.1.100:8000/stream';
+// Change from:
+final String _mcpServerUrl = 'http://localhost:8000';
+
+// To (replace with your computer's IP):
+final String _mcpServerUrl = 'http://192.168.1.100:8000';
+
+// Also update the _webhookUrl getter to return your computer's IP:
+String get _webhookUrl {
+  return 'http://192.168.1.100:$_localPort/webhook';
+}
 ```
 
 **Important**: Make sure your device is on the same WiFi network as your computer!
 
 ## ✨ Features
 
-### Auto-Reconnection
-- Automatically reconnects if connection is lost
-- 3-second delay after disconnect
-- 5-second delay after error
+### HTTP Server
+- Runs embedded HTTP server on port 3000
+- Receives webhook POST requests at `/webhook`
+- Automatic lifecycle management
+
+### Auto-Registration
+- Automatically registers webhook on startup
+- Auto-unregisters on app close
+- Shows registration status in UI
 
 ### Message Display
 - Newest messages at the top
-- Event counter shows total events received
+- Event counter shows total messages received
 - Each message shows its event number
 - Clean, Material Design 3 UI
 
 ### Controls
-- **Refresh button**: Reconnect to stream
+- **Refresh button**: Restart server and re-register
 - **Clear button**: Clear all messages
-- **Status indicator**: Shows connection state with color
+- **Status indicator**: Shows registration state with color
 
 ### Status Colors
-- 🟢 **Green**: Connected and receiving
-- 🟠 **Orange**: Connecting or reconnecting
+- 🟢 **Green**: Registered and ready
+- 🟠 **Orange**: Starting or registering
 - 🔴 **Red**: Error state
 
 ## 🧪 Testing
 
-### Test 1: Connection
+### Test 1: Registration
 Run the app and check the status bar:
-- Should show "Connected ✓" with green background
+- Should show "Registered ✓ (port 3000)" with green background
+
+Verify registration:
+```bash
+curl http://localhost:8000/api/webhooks
+# Should show your webhook URL in the list
+```
 
 ### Test 2: Receive Messages
 Push a test message:
@@ -148,30 +159,28 @@ done
 
 All 5 messages should appear in order (newest at top).
 
-### Test 4: Auto-Reconnect
-1. Stop the Docker container:
-   ```bash
-   docker-compose down
-   ```
-2. App should show "Disconnected" or error
-3. Restart container:
-   ```bash
-   docker-compose up -d
-   ```
-4. App should automatically reconnect within 3-5 seconds
+### Test 4: Direct Webhook Test
+Test the webhook endpoint directly:
+```bash
+curl -X POST http://localhost:3000/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Direct test","timestamp":"2025-11-25T12:00:00Z"}'
+```
+
+The message should appear in the app.
 
 ## 🎨 UI Components
 
 ### Status Bar
 Shows:
-- Connection status with icon
-- Event count (when connected)
-- Stream URL
+- Registration status with icon
+- Event count (when registered)
+- Local port number
 
 ### Message List
 Each message card shows:
 - Event number badge
-- Message content
+- Message content with timestamp
 - "Event #X" subtitle
 
 ### Empty State
@@ -182,93 +191,118 @@ When no messages received:
 
 ## 🔧 How It Works
 
-### SSE (Server-Sent Events)
-The app uses SSE protocol which:
-- Keeps connection open
-- Server pushes data when available
-- Automatic reconnection support
-- Text-based, simple format
+### Webhook Architecture
+The app uses webhooks instead of persistent connections:
+- Runs a local HTTP server (Shelf package)
+- Registers webhook URL with MCP server
+- MCP server makes HTTP POST when messages arrive
+- App parses JSON payload and displays message
 
 ### Data Flow
 ```
-WebStream Server (port 8000)
+User (Claude/Cursor)
     ↓
-    /stream endpoint (SSE)
+    "Push message to webhooks"
     ↓
-Flutter HTTP Client
+MCP Server (port 8000)
     ↓
-UTF-8 Decoder
+    HTTP POST to registered webhooks
     ↓
-Line Parser (data: prefix)
+Flutter HTTP Server (port 3000)
+    ↓
+    POST /webhook endpoint
+    ↓
+JSON Parser
     ↓
 UI Update (setState)
     ↓
 Message List Display
 ```
 
-### SSE Format
-Messages come as:
-```
-data: [2025-11-11T08:03:02...] Your message here
-
-: keepalive
-
-data: [2025-11-11T08:03:05...] Another message
-
+### Webhook Payload Format
+Messages come as JSON:
+```json
+{
+  "message": "Your message here",
+  "timestamp": "2025-11-25T12:34:56.789012+00:00"
+}
 ```
 
 The app:
-- Parses lines starting with `data:`
-- Extracts message after the prefix
-- Ignores keepalive lines (starting with `:`)
-- Updates UI with new messages
+- Receives POST request at `/webhook`
+- Parses JSON body
+- Extracts message and timestamp
+- Updates UI with new message
+- Responds with 200 OK
 
 ## 🐛 Troubleshooting
 
-### "Error: Connection refused"
+### "Registration failed"
 
-**Problem**: Can't connect to the server.
+**Problem**: Can't register with MCP server.
 
 **Solutions**:
 
-1. Check server is running:
+1. Check MCP server is running:
    ```bash
-   docker ps | grep webstream-mcp-server
+   docker ps | grep webhook-mcp-server
    ```
 
 2. Test server accessibility:
    ```bash
-   curl http://localhost:8000/stream
+   curl http://localhost:8000/api/webhooks
    ```
 
 3. For mobile devices, use correct IP address (see Platform-Specific Configuration above)
 
-### "Error: HTTP 404"
+4. Check server logs:
+   ```bash
+   docker-compose logs -f webstream-mcp-server
+   ```
 
-**Problem**: Wrong URL.
+### "Error starting server: Address already in use"
 
-**Solution**: Ensure you're using `/stream` endpoint:
-```dart
-final String _streamUrl = 'http://localhost:8000/stream';
-//                                                  ^^^^^^^ Important!
-```
-
-### Messages Not Appearing
-
-**Problem**: Connected but no messages show up.
+**Problem**: Port 3000 is already in use.
 
 **Solutions**:
 
-1. Push a test message:
+1. Find what's using port 3000:
+   ```bash
+   lsof -i :3000    # macOS/Linux
+   netstat -ano | findstr :3000    # Windows
+   ```
+
+2. Kill the process or change the port in `main.dart`:
+   ```dart
+   final int _localPort = 3001;  // Use different port
+   ```
+
+### Messages Not Appearing
+
+**Problem**: Registered but no messages show up.
+
+**Solutions**:
+
+1. Verify webhook is registered:
+   ```bash
+   curl http://localhost:8000/api/webhooks
+   ```
+
+2. Test webhook directly:
+   ```bash
+   curl -X POST http://localhost:3000/webhook \
+     -H "Content-Type: application/json" \
+     -d '{"message":"Test","timestamp":"2025-01-01T00:00:00Z"}'
+   ```
+
+3. Push via MCP server:
    ```bash
    curl -X POST http://localhost:8000/api/push \
      -H "Content-Type: application/json" \
      -d '{"message":"Test"}'
    ```
 
-2. Check app is parsing correctly (should see event count increase)
-
-3. Try clearing messages with the clear button
+4. Check Flutter debug console for errors
 
 ### Can't Connect from Phone
 
@@ -280,84 +314,72 @@ final String _streamUrl = 'http://localhost:8000/stream';
 
 2. Find your computer's IP:
    ```bash
-   ifconfig | grep "inet "
+   ifconfig | grep "inet "    # macOS/Linux
+   ipconfig                   # Windows
    ```
 
-3. Update the URL in `main.dart` with your IP
+3. Update both URLs in `main.dart`:
+   - `_mcpServerUrl`: Where the MCP server is
+   - `_webhookUrl`: Where the Flutter app is (your computer's IP + port 3000)
 
-4. Make sure firewall allows port 8000
+4. Make sure firewall allows ports 8000 and 3000
 
 ## 📊 Architecture
 
 ```
 Flutter App
-    ├─ HTTP Client (http package)
-    ├─ Stream Subscription
-    ├─ UTF-8 Decoder
-    └─ SSE Parser
-        ↓
-    State Management (setState)
+    ├─ Shelf HTTP Server (port 3000)
+    │   └─ POST /webhook endpoint
+    ├─ HTTP Client (registration)
+    └─ State Management (setState)
         ↓
     UI Components
-        ├─ Status Bar (connection info)
+        ├─ Status Bar (registration info)
         ├─ Message List (ListView)
         └─ Controls (refresh, clear)
 ```
 
 ## 🎯 Use Cases
 
-- **Development Monitoring**: Watch real-time events during development
-- **Build Notifications**: See build status messages from CI/CD
-- **System Alerts**: Monitor system events and errors
-- **Chat/Messaging**: Display real-time messages
-- **IoT Dashboard**: Show sensor data or device status
-- **Live Updates**: Any real-time notification system
+- **Development Notifications**: Receive build status, test results
+- **CI/CD Updates**: Get notified of deployment status
+- **System Monitoring**: Receive alerts and warnings
+- **Chat Messages**: Display real-time messages
+- **IoT Events**: Monitor device status and sensor data
+- **Any Push Notifications**: General-purpose webhook receiver
 
 ## 📚 Code Structure
 
 ### State Variables
 - `_messages`: List of received messages
-- `_connectionStatus`: Current connection state
-- `_streamSubscription`: Active stream subscription
-- `_eventCount`: Total events received
+- `_connectionStatus`: Current registration state
+- `_server`: HTTP server instance
+- `_eventCount`: Total messages received
 
 ### Key Methods
-- `_connectToStream()`: Establishes SSE connection
-- `_reconnect()`: Manual reconnect trigger
-- `_clearMessages()`: Clear message history
+- `_startWebhookServer()`: Starts HTTP server and registers webhook
+- `_handleWebhookRequest()`: Processes incoming webhook POST requests
+- `_registerWebhook()`: Registers with MCP server
+- `_unregisterWebhook()`: Unregisters on app close
+- `_reconnect()`: Restart server and re-register
 
 ### UI Sections
 - AppBar with controls
-- Status bar with connection info
+- Status bar with registration info
 - Message list or empty state
 
-## 🚀 Next Steps
+## 🚀 Advantages of Webhooks
 
-### Enhancements You Could Add:
+### vs Server-Sent Events (SSE)
 
-1. **Message Filtering**
-   - Filter by keyword
-   - Show only errors/warnings
-
-2. **Message Persistence**
-   - Save messages to local storage
-   - Load history on startup
-
-3. **Export Functionality**
-   - Export messages as JSON
-   - Share messages
-
-4. **Themes**
-   - Dark mode
-   - Custom color schemes
-
-5. **Notifications**
-   - Local notifications for new messages
-   - Sound alerts
-
-6. **Multiple Streams**
-   - Connect to multiple servers
-   - Switch between streams
+| Feature | Webhooks | SSE |
+|---------|----------|-----|
+| **Connection** | No persistent connection | Persistent connection required |
+| **Mobile Battery** | Better (no keep-alive) | Drains battery faster |
+| **Reliability** | More reliable on mobile | Can disconnect frequently |
+| **Scalability** | Scales better | Holds connections open |
+| **Complexity** | Simpler architecture | More complex state management |
+| **Firewall** | Works better behind NAT | Connection issues common |
 
 ## 📖 Dependencies
 
@@ -365,22 +387,31 @@ Flutter App
 dependencies:
   flutter:
     sdk: flutter
-  http: ^1.1.0  # For SSE connection
+  http: ^1.2.0   # For webhook registration
+  shelf: ^1.4.0  # HTTP server framework
 ```
 
 ## ✅ Testing Checklist
 
-- [ ] App connects successfully
-- [ ] Status shows "Connected ✓"
-- [ ] Messages appear when pushed
+- [ ] App starts successfully
+- [ ] HTTP server starts on port 3000
+- [ ] Status shows "Registered ✓"
+- [ ] Webhook appears in server's list
+- [ ] Messages arrive when pushed
 - [ ] Event count increments
-- [ ] Auto-reconnect works
+- [ ] Direct webhook test works
+- [ ] Refresh button re-registers
 - [ ] Clear button works
-- [ ] Refresh button works
 - [ ] UI looks good on your platform
 
 ## 🎉 You're All Set!
 
-Your Flutter app is now ready to receive real-time messages from the WebstreamMCP server!
+Your Flutter app is now ready to receive webhook messages from the MCP server!
 
-Enjoy your live event stream! 📱✨
+Enjoy your webhook-powered notifications! 📱✨
+
+## 🔗 Related Documentation
+
+- Main MCP Server: `../webstream-mcp-server/readme.md`
+- MCP Server API: `http://localhost:8000` (web dashboard)
+- Webhook Management: `http://localhost:8000/api/webhooks`
