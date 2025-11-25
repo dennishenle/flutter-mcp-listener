@@ -130,4 +130,48 @@ With an MCP that can talk to my flutter app
 
 --- 
 
+## The MCP server
+
+- Implemented with python
+- standalone server, constantly running
+- Provides MCP interface for the LLM
+
+---
+
+## Setup in cursor
+
+```json
+"WebstreamMCP": {
+    "command": "docker",
+    "args": [
+        "exec",
+        "-i",
+        "webstream-mcp-server",
+        "python",
+        "/app/webstream_server.py"
+    ]
+}
+```
+---
+
+## Startup MCP server
+
+```bash
+cd webstram-mcp-server
+docker compose up
+```
+
+It should be available to watch in the browser now at
+`localhost:8000`
+
+---
+
+## Call in MCP server
+
+```
+
+```
+
+---
+
 # Thank you 
