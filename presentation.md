@@ -8,6 +8,16 @@ header: 'Controlling Flutter Applications with LLMs via MCP'
 footer: 'Dennis Henle - Flutter Meetup'
 ---
 
+# I'm...
+
+... ☀️⛰️ from Ravensburg near the beatuful Lake Constance, Germany
+... 👨🏻‍💻 Software Developer at sevdesk since 2022
+... 📱 into flutter since the start of our new app 2024
+... 🎮 really into gaming
+... 🥾🏔️🚵🏻‍♂️ an outdoor sport enthusiast
+
+---
+
 # Controlling Flutter Applications with LLMs via MCP
 
 ---
