@@ -216,3 +216,8 @@ Any ideas?
 ---
 
 # Thank you 
+
+<center>
+    <img src="qr_github.png" height=500>
+</center>
+---
