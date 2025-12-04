@@ -128,13 +128,13 @@ With an MCP that can talk to my flutter app
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   AI Model      │    │   MCP Server    │    │  Data Sources   │
+│   AI Model      │    │   MCP Server    │    │  Flutter App    │
 │                 │    │                 │    │                 │
-│                 │    │   Publishes a   │    │  • Databases    │
-│   Cursor        │◄──►│   Webstream     │◄──►│  • APIs         │
-│                 │    │   when called   │    │  • Files        │
-│                 │    │   by Cursor     │    │  • Services     │
-│                 │    │                 │    │  • Tools        │
+│                 │    │   Publishes     │    │  Receives       │
+│   Cursor        │◄──►│   messages      │◄──►│  incoming       │
+│                 │    │   when called   │    │  messages and   │
+│                 │    │   by Cursor     │    │  reacts to them │
+│                 │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
@@ -145,6 +145,14 @@ With an MCP that can talk to my flutter app
 - Implemented with python
 - standalone server, constantly running
 - Provides MCP interface for the LLM
+- Forwards messages to registered Clients
+
+---
+
+## The Flutter app
+
+- Registers itself to the mcp server
+- listens for events that are triggered by LLM
 
 ---
 
@@ -191,6 +199,19 @@ It should say connected/registered in green.
 ```
 Push "Hello from cursor" to the webhooks
 ```
+
+---
+
+# What now? 
+
+As you see, the app is very minimalistic. 
+Should we change that together? 
+
+Let's vibe code and see what we get. 
+
+**Timer: 20min**
+
+Any ideas? 
 
 ---
 
